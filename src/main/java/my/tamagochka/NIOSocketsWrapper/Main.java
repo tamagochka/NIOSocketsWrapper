@@ -36,47 +36,80 @@ public class Main {
 
 
     public static void main(String[] args) {
+
         NIOServer server;
-        try {
-            server = new NIOServer(5050);
-        } catch(IOException e) {
-            e.printStackTrace();
-            return;
-        }
+        NIOClient client;
 
-        server.acceptHandler(sc -> {
-            Sender sender = new Sender(sc, server);
-            threads.put(sc, sender);
-            sender.start();
-        });
-
-        server.sentExceptionHandler((sc, notSent, e) -> threads.get(sc).interrupt());
-
-        server.receiveHandler((sc, data) -> {
-            try {
-                System.out.println(((InetSocketAddress) sc.getRemoteAddress()).getAddress() + ":" +
-                        ((InetSocketAddress) sc.getRemoteAddress()).getPort() + " - " +
-                        new String(data));
-            } catch(IOException e) {
-                e.printStackTrace();
-            }
-        });
-
-        server.finishHandler((notSent, e) -> {
-            for(Thread thread : threads.values()) {
-                thread.interrupt();
-            }
-        });
-
-        server.start();
-
+        System.out.print("What do you have to run (s(server)/c(client))? ");
         String str = null;
         Scanner in = new Scanner(System.in);
-        while(str == null || !str.equals("exit")) {
-            str = in.nextLine();
+        str = in.nextLine();
+        if(str.toLowerCase().equals("s")) {
+
+            try {
+                server = new NIOServer(5050);
+            } catch(IOException e) {
+                e.printStackTrace();
+                return;
+            }
+
+            server.acceptHandler(sc -> {
+                Sender sender = new Sender(sc, server);
+                threads.put(sc, sender);
+                sender.start();
+            });
+
+            server.sentExceptionHandler((sc, notSent, e) -> threads.get(sc).interrupt());
+
+/*
+            server.receiveHandler((sc, data) -> {
+                try {
+                    System.out.println("The data was been received from client: " +
+                            ((InetSocketAddress) sc.getRemoteAddress()).getAddress() + ":" +
+                            ((InetSocketAddress) sc.getRemoteAddress()).getPort() + " - " +
+                            new String(data));
+                } catch(IOException e) {
+                    e.printStackTrace();
+                }
+            });
+*/
+
+            server.finishHandler((notSent, e) -> {
+                for(Thread thread : threads.values()) {
+                    thread.interrupt();
+                }
+            });
+
+            server.start();
+            System.out.println("The server has been started...");
+            while(str == null || !str.equals("exit")) {
+                str = in.nextLine();
+            }
+            server.finish();
+
+        } else if(str.toLowerCase().equals("c")) {
+
+            try {
+                client = new NIOClient("127.0.0.1", 5050);
+            } catch(IOException e) {
+                e.printStackTrace();
+                return;
+            }
+
+            client.start();
+            System.out.println("The client has been started...");
+            for(int i = 0; i < 100000; i++) {
+//                System.out.println("The data was been sent to server: " + i);
+                client.send(Integer.toString(i).getBytes());
+            }
+
+
         }
 
-        server.finish();
+
+
+
+
 
 
 

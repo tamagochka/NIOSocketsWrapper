@@ -2,10 +2,13 @@ package my.tamagochka.NIOSocketsWrapper;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Queue;
 
 public class NIOClient extends Thread {
 
@@ -15,8 +18,15 @@ public class NIOClient extends Thread {
     private final String serverAddress;
     private final int bufferSize;
 
-    private final SocketChannel sc;
     private final Selector selector;
+    private final SocketChannel sc;
+
+    private Sender sender = new Sender();
+    private Thread threadSender;
+
+    private final Queue<byte[]> dataToSend = new LinkedList<>();
+
+
 
     public NIOClient(String serverAddress, int serverPort) throws IOException {
         this(serverAddress, serverPort, DEFAULT_BUFFER_SIZE);
@@ -34,15 +44,56 @@ public class NIOClient extends Thread {
     }
 
     private void connect(SelectionKey key) {
-
+        SocketChannel sc = (SocketChannel) key.channel();
+        try {
+            sc.finishConnect();
+        } catch(IOException e) {
+            // TODO how to process this exception?
+        }
+        key.interestOps(SelectionKey.OP_READ);
     }
 
     private void read(SelectionKey key) {
+        // TODO call event lambda function for process received data
+    }
 
+    public void send(byte[] data) {
+        // TODO added data to queue for sending
+        if(threadSender == null) {
+            threadSender = new Thread(sender);
+            threadSender.start();
+        }
+        synchronized(dataToSend) {
+            dataToSend.add(data);
+            dataToSend.notify();
+        }
     }
 
     private void write(SelectionKey key) {
+        // TODO needed queue for sending data
+        SocketChannel sc = (SocketChannel) key.channel();
+        Queue<byte[]> queue;
+        synchronized(dataToSend) {
+            queue = new LinkedList<>(dataToSend);
+            dataToSend.clear();
+        }
 
+        while(!queue.isEmpty()) {
+            byte[] sent = queue.poll();
+            ByteBuffer buffer = ByteBuffer.wrap(sent);
+            try {
+                sc.write(buffer);
+            } catch(IOException e) {
+                // TODO process exception
+            }
+            System.out.println("The data was been sent to server: " + new String(sent));
+
+
+        }
+        key.interestOps(SelectionKey.OP_READ);
+        synchronized(dataToSend) {
+            dataToSend.notify();
+        }
     }
 
     @Override
@@ -72,5 +123,27 @@ public class NIOClient extends Thread {
 
     }
 
+    private class Sender implements Runnable {
+
+        @Override
+        public void run() {
+            while(true) {
+                synchronized(dataToSend) {
+                    try {
+                        dataToSend.wait();
+                    } catch(InterruptedException e) {
+                        return;
+                    }
+                    if(Thread.interrupted()) return;
+                    if(!dataToSend.isEmpty()) {
+                        SelectionKey key = sc.keyFor(selector);
+                        if(key != null && key.isValid() && selector.isOpen())
+                            key.interestOps(SelectionKey.OP_WRITE);
+                    }
+                }
+                selector.wakeup();
+            }
+        }
+    }
 
 }

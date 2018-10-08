@@ -216,6 +216,7 @@ public class NIOServer extends Thread {
                 halt(sc);
                 return;
             }
+            System.out.println(new String(buffer.array()));
         } catch(IOException e) {
             if(receiveExceptionHandler != null) {
                 Queue<byte[]> notSent = null;
@@ -229,9 +230,9 @@ public class NIOServer extends Thread {
             }
             return;
         }
-        byte[] dataCopy = new byte[numRead];
-        System.arraycopy(buffer.array(), 0, dataCopy, 0, numRead);
         if(receiveHandler != null) {
+            byte[] dataCopy = new byte[numRead];
+            System.arraycopy(buffer.array(), 0, dataCopy, 0, numRead);
             receiveHandler.accept(sc, dataCopy);
         }
     }
@@ -265,10 +266,10 @@ public class NIOServer extends Thread {
             }
             if(sentHandler != null) sentHandler.accept(sc, sent);
         }
-        key.interestOps(SelectionKey.OP_READ);
         synchronized(dataToSend) {
             dataToSend.notify();
         }
+        key.interestOps(SelectionKey.OP_READ);
     }
 
     public void finish() {
