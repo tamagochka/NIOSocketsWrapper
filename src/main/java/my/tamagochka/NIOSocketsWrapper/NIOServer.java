@@ -1,7 +1,6 @@
 package my.tamagochka.NIOSocketsWrapper;
 
 import my.tamagochka.NIOSocketsWrapper.Handlers.BiHandler;
-import my.tamagochka.NIOSocketsWrapper.Handlers.TriHandler;
 import my.tamagochka.NIOSocketsWrapper.Handlers.UniHandler;
 
 import java.io.IOException;
@@ -17,8 +16,9 @@ public class NIOServer extends Thread {
 
     private static final int DEFAULT_BUFFER_SIZE = 1024;
 
-    private final int port;
-    private final int bufferSize;
+    private String serverAddress;
+    private int port;
+    private int bufferSize;
 
     private Selector selector;
 
@@ -34,6 +34,7 @@ public class NIOServer extends Thread {
 
     // events
     private UniHandler<SocketChannel> acceptHandler;
+    private UniHandler<SocketChannel> connectHandler;
 //    private exceptionHandler closeHandler;
 //    private exceptionHandler haltHandler;
 //    private BiHandler<Map<SocketChannel, Queue<byte[]>>, IOException> finishHandler;
@@ -48,6 +49,10 @@ public class NIOServer extends Thread {
     // events setters
     public void acceptHandler(UniHandler<SocketChannel> acceptHandler) {
         this.acceptHandler = acceptHandler;
+    }
+
+    public void connectHandler(UniHandler<SocketChannel> connectHandler) {
+        this.connectHandler = connectHandler;
     }
 
 /*
@@ -96,19 +101,100 @@ public class NIOServer extends Thread {
     }
 */
 
-    public NIOServer(int port) throws IOException {
-        this(port, DEFAULT_BUFFER_SIZE);
+    public static NIOServer NIOClientFabric(int bufferSize){
+        return new NIOServer(HostType.CLIENT, bufferSize);
     }
 
-    public NIOServer(int port, int bufferSize) throws IOException {
-        this.port = port;
+    public static NIOServer NIOClientFabric(){
+        return NIOClientFabric(DEFAULT_BUFFER_SIZE);
+    }
+
+
+    public static NIOServer NIOServerFabric(){
+        return new NIOServer(HostType.SERVER, DEFAULT_BUFFER_SIZE);
+    }
+
+    public static NIOServer NIOServerFabric(int bufferSize){
+        return new NIOServer(HostType.SERVER, bufferSize);
+    }
+
+    private enum HostType {
+        CLIENT, SERVER;
+    }
+
+    private HostType hostType = HostType.SERVER;
+
+
+/*
+    private NIOServer(HostType hostType, String serverAddress, int port) throws IOException { // TODO delete later
+        this(hostType, serverAddress, port, DEFAULT_BUFFER_SIZE);
+    }
+*/
+
+//    private NIOServer(HostType hostType, String serverAddress, int port, int bufferSize) throws IOException {
+    private NIOServer(HostType hostType, int bufferSize) {
+        this.hostType = hostType;
         this.bufferSize = bufferSize;
-        ServerSocketChannel ssc = ServerSocketChannel.open();
-        ssc.configureBlocking(false);
-        ssc.bind(new InetSocketAddress(port));
-        selector = Selector.open();
-        ssc.register(selector, SelectionKey.OP_ACCEPT);
-        serverIsRunning = true;
+
+
+
+/*
+        switch(hostType) {
+
+
+            case SERVER:
+                ServerSocketChannel ssc = ServerSocketChannel.open();
+                ssc.configureBlocking(false);
+                ssc.bind(new InetSocketAddress(port));
+                ssc.register(selector, SelectionKey.OP_ACCEPT);
+                serverIsRunning = true;
+                break;
+            case CLIENT:
+                SocketChannel sc = SocketChannel.open();
+                sc.configureBlocking(false);
+                sc.register(selector, SelectionKey.OP_CONNECT);
+                sc.connect(new InetSocketAddress(serverAddress, port));
+                break;
+        }
+*/
+    }
+
+    public void launch(int port) throws IOException {
+        if(hostType == HostType.SERVER) {
+            selector = Selector.open();
+            this.port = port;
+            ServerSocketChannel ssc = ServerSocketChannel.open();
+            ssc.configureBlocking(false);
+            ssc.bind(new InetSocketAddress(port));
+            ssc.register(selector, SelectionKey.OP_ACCEPT);
+            serverIsRunning = true;
+        }
+    }
+
+    public void connect(String serverAddress, int serverPort) throws IOException {
+        if(hostType == HostType.CLIENT) {
+            selector = Selector.open();
+            this.serverAddress = serverAddress;
+            this.port = serverPort;
+            SocketChannel sc = SocketChannel.open();
+            sc.configureBlocking(false);
+            sc.register(selector, SelectionKey.OP_CONNECT);
+            sc.connect(new InetSocketAddress(serverAddress, port));
+            serverIsRunning = true;
+        }
+    }
+
+    private void connection(SelectionKey key) {
+        SocketChannel sc = (SocketChannel) key.channel();
+        try {
+            sc.finishConnect();
+        } catch(IOException e) {
+            // TODO
+            e.printStackTrace();
+        }
+        key.interestOps(SelectionKey.OP_READ);
+        if(connectHandler != null)
+            connectHandler.process(sc);
     }
 
     public void send(SocketChannel sc, byte[] data) {
@@ -341,6 +427,7 @@ public class NIOServer extends Thread {
                 i.remove();
                 if(!key.isValid()) continue;
                 if(key.isAcceptable()) accept(key);
+                else if(key.isConnectable()) connection(key);
                 else if(key.isReadable()) read(key);
                 else if(key.isWritable()) write(key);
             }

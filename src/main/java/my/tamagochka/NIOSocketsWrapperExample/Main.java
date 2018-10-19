@@ -1,6 +1,5 @@
 package my.tamagochka.NIOSocketsWrapperExample;
 
-import my.tamagochka.NIOSocketsWrapper.NIOClient;
 import my.tamagochka.NIOSocketsWrapper.NIOServer;
 
 import java.io.IOException;
@@ -16,6 +15,8 @@ public class Main {
     private static final boolean FULL_LOG = true;
 
     private static Map<SocketChannel, ClientHandler> threads = new HashMap<>();
+
+    private static ServerHandler serverHandler;
 
     private static class ServerLogger {
 
@@ -39,9 +40,12 @@ public class Main {
                     case SENDING:
                         dir = "sent to";
                         break;
+                    default:
+                        dir = "received from";
+                        break;
                 }
                 try {
-                    System.out.println("Data was been " + " client: " +
+                    System.out.println("Data was been " + dir + " client: " +
                             ((InetSocketAddress) sc.getRemoteAddress()).getAddress() + ":" +
                             ((InetSocketAddress) sc.getRemoteAddress()).getPort() + " - " +
                             data);
@@ -109,9 +113,11 @@ public class Main {
         private boolean TransmissionDone = false;
         private boolean ReceiveDone = false;
 
-        private NIOClient client;
+        private SocketChannel sc;
+        private NIOServer client;
 
-        public ServerHandler(NIOClient client) {
+        public ServerHandler(SocketChannel sc, NIOServer client) {
+            this.sc = sc;
             this.client = client;
         }
 
@@ -125,15 +131,15 @@ public class Main {
 
         public void run () {
             for(int i = 0; i < NUM_PACKETS; i++) {
-                client.send(Integer.toString(i).getBytes());
+                client.send(sc, Integer.toString(i).getBytes());
                 if(FULL_LOG) System.out.println("The data was been sent to server: " + i);
             }
-            client.send("Bye.".getBytes());
+            client.send(sc, "Bye.".getBytes());
             if(FULL_LOG) System.out.println("The data was been sent to server: Bye.");
             TransmissionDone = true;
             System.out.println("The client has completed the transmission.");
             if(checkEndOfExchange()) {
-                client.close();
+                client.close(sc);
                 System.out.println("The channel to server was closed.");
             }
 
@@ -144,7 +150,7 @@ public class Main {
     public static void main(String[] args) {
 
         NIOServer server;
-        NIOClient client;
+        NIOServer client;
 
         System.out.print("What do you have to run (s(server)/c(client))? ");
         String type = null;
@@ -164,12 +170,8 @@ public class Main {
 
         if(type.toLowerCase().equals("s")) { // server start
 
-            try {
-                server = new NIOServer(5050);
-            } catch(IOException e) {
-                e.printStackTrace();
-                return;
-            }
+            server = NIOServer.NIOServerFabric(); //new NIOServer(5050);
+
             ServerLogger logger = new ServerLogger(FULL_LOG);
 
             server.acceptHandler(sc -> {
@@ -205,6 +207,13 @@ public class Main {
             });
 */
 
+            try {
+                server.launch(5050);
+            } catch(IOException e) {
+                e.printStackTrace();
+                return;
+            }
+
             System.out.println("The server has been started...");
             server.start();
 
@@ -230,13 +239,17 @@ public class Main {
 
         } else if(type.toLowerCase().equals("c")) { // client start ////////////////////
 
-            try {
-                client = new NIOClient("127.0.0.1", 5050);
-            } catch(IOException e) {
-                e.printStackTrace();
-                return;
-            }
-            ServerHandler serverHandler = new ServerHandler(client);
+            client = NIOServer.NIOClientFabric();//new NIOClient("127.0.0.1", 5050);
+
+            client.connectHandler(sc -> {
+                serverHandler = new ServerHandler(sc, client);
+                serverHandler.start();
+            });
+
+
+
+
+
 
 //            boolean TransmissionDone = false;
             client.receiveHandler((sc, data) -> {
@@ -247,7 +260,7 @@ public class Main {
 
                     System.out.println("The server has completed the transmission.");
                     if(serverHandler.checkEndOfExchange()) {
-                        client.close();
+                        client.close(sc);
                         System.out.println("The channel to server was closed.");
                     }
 
@@ -261,11 +274,16 @@ public class Main {
             });
 
 
+            try {
+                client.connect("127.0.0.1", 5050);
+            } catch(IOException e) {
+                e.printStackTrace();
+                return;
+            }
 
 
             System.out.println("The client has been started...");
             client.start();
-            serverHandler.start();
 
 
 
