@@ -11,6 +11,8 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.*;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 public class NIOServer extends Thread {
 
@@ -33,13 +35,13 @@ public class NIOServer extends Thread {
 
 
     // events
-    private UniHandler<SocketChannel> acceptHandler;
-    private UniHandler<SocketChannel> connectHandler;
+    private Consumer<SocketChannel> acceptHandler;
+    private Consumer<SocketChannel> connectHandler;
 //    private exceptionHandler closeHandler;
 //    private exceptionHandler haltHandler;
 //    private BiHandler<Map<SocketChannel, Queue<byte[]>>, IOException> finishHandler;
 
-    private BiHandler<SocketChannel, byte[]> receiveHandler;
+    private BiConsumer<SocketChannel, byte[]> receiveHandler;
 //    private BiHandler<SocketChannel, byte[]> sentHandler;
 
 //    private exceptionHandler receiveExceptionHandler;
@@ -47,11 +49,11 @@ public class NIOServer extends Thread {
 //    private BiHandler<SocketChannel, IOException> acceptExceptionHandler;
 
     // events setters
-    public void acceptHandler(UniHandler<SocketChannel> acceptHandler) {
+    public void acceptHandler(Consumer<SocketChannel> acceptHandler) {
         this.acceptHandler = acceptHandler;
     }
 
-    public void connectHandler(UniHandler<SocketChannel> connectHandler) {
+    public void connectHandler(Consumer<SocketChannel> connectHandler) {
         this.connectHandler = connectHandler;
     }
 
@@ -73,7 +75,7 @@ public class NIOServer extends Thread {
     }
 */
 
-    public void receiveHandler(BiHandler<SocketChannel, byte[]> receiveHandler) {
+    public void receiveHandler(BiConsumer<SocketChannel, byte[]> receiveHandler) {
         this.receiveHandler = receiveHandler;
     }
 
@@ -194,7 +196,7 @@ public class NIOServer extends Thread {
         }
         key.interestOps(SelectionKey.OP_READ);
         if(connectHandler != null)
-            connectHandler.process(sc);
+            connectHandler.accept(sc);
     }
 
     public void send(SocketChannel sc, byte[] data) {
@@ -325,7 +327,7 @@ public class NIOServer extends Thread {
 */
         }
         if(acceptHandler != null)
-            acceptHandler.process(sc);
+            acceptHandler.accept(sc);
     }
 
     private void read(SelectionKey key) {
@@ -359,7 +361,7 @@ public class NIOServer extends Thread {
         if(receiveHandler != null) {
             byte[] dataCopy = new byte[numRead];
             System.arraycopy(buffer.array(), 0, dataCopy, 0, numRead);
-            receiveHandler.process(sc, dataCopy);
+            receiveHandler.accept(sc, dataCopy);
         }
     }
 
