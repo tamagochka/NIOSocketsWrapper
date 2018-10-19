@@ -1,5 +1,7 @@
 package my.tamagochka.NIOSocketsWrapper;
 
+import my.tamagochka.NIOSocketsWrapper.Handlers.BiHandler;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -19,14 +21,48 @@ public class NIOClient extends Thread {
     private final int bufferSize;
 
     private final Selector selector;
-    private final SocketChannel sc;
+    private final SocketChannel sc; // TODO assign the sc with address and process only address without sc
 
     private Sender sender = new Sender();
     private Thread threadSender;
 
+    private boolean clientIsRunning = false;
+
     private final Queue<byte[]> dataToSend = new LinkedList<>();
 
+    private BiHandler<SocketChannel, byte[]> receiveHandler;
+//    private BiHandler<SocketChannel, Selector> disconnectingHandler;
+//    private BiHandler<SocketChannel, Exception> receiveExceptionHandler;
+//    private TriHandler<SocketChannel, Queue<byte[]>, IOException> closeHandler;
+//    private TriHandler<SocketChannel, Queue<byte[]>, IOException> haltHandler;
 
+    public void receiveHandler(BiHandler<SocketChannel, byte[]> receiveHandler) {
+        this.receiveHandler = receiveHandler;
+    }
+
+/*
+    public void disconnectingHandler(BiHandler<SocketChannel, Selector> disconnectingHandler) {
+        this.disconnectingHandler = disconnectingHandler;
+    }
+*/
+
+/*
+    public void receiveExceptionHandler(BiHandler<SocketChannel, Exception> receiveExceptionHandler) {
+        this.receiveExceptionHandler = receiveExceptionHandler;
+    }
+*/
+
+/*
+    public void closeHandler(TriHandler<SocketChannel, Queue<byte[]>, IOException> closeHandler) {
+        this.closeHandler = closeHandler;
+    }
+*/
+
+/*
+    public void haltHandler(TriHandler<SocketChannel, Queue<byte[]>, IOException> haltHandler) {
+        this.haltHandler = haltHandler;
+    }
+*/
 
     public NIOClient(String serverAddress, int serverPort) throws IOException {
         this(serverAddress, serverPort, DEFAULT_BUFFER_SIZE);
@@ -36,6 +72,7 @@ public class NIOClient extends Thread {
         this.serverAddress = serverAddress;
         this.serverPort = serverPort;
         this.bufferSize = bufferSize;
+        clientIsRunning = true;
         sc = SocketChannel.open();
         sc.configureBlocking(false);
         selector = Selector.open();
@@ -53,52 +90,154 @@ public class NIOClient extends Thread {
         key.interestOps(SelectionKey.OP_READ);
     }
 
+/*
+    private IOException dropConnection() {
+        if(threadSender != null) threadSender.interrupt();
+        if(sc != null*/
+/* && sc.isConnected()*//*
+) {
+            try {
+                sc.close(); // sc.keyFor(selector).cancel();
+                selector.close();
+            } catch(IOException e) {
+                return e;
+            }
+        }
+        return null;
+    }
+*/
+
+    public void close() {
+/*
+        if(!clientIsRunning) return;
+        Queue<byte[]> notSent = null;
+        synchronized(dataToSend) {
+            while(!dataToSend.isEmpty()) {
+                try {
+                    dataToSend.wait();
+                } catch(InterruptedException e) {
+                    break;
+                }
+            }
+            if(closeHandler != null)
+                notSent = new LinkedList<>(dataToSend);
+        }
+
+
+        System.out.printf("shutdown process is activated");
+
+
+        clientIsRunning = false;
+        IOException e = dropConnection();
+        if(closeHandler != null) {
+            closeHandler.process(sc, notSent, e);
+        } else if(e != null) e.printStackTrace();
+*/
+        threadSender.interrupt();
+        try {
+            sc.close();
+        } catch(IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+/*
+    public void halt() {
+        if(!clientIsRunning) return;
+        clientIsRunning = false;
+        IOException e = dropConnection();
+        if(haltHandler != null) {
+            Queue<byte[]> notSent = null;
+            synchronized(dataToSend) {
+                notSent = new LinkedList<>(dataToSend);
+            }
+            haltHandler.process(sc, notSent, e);
+        } else if(e != null) e.printStackTrace();
+    }
+*/
+
     private void read(SelectionKey key) {
-        // TODO call event lambda function for process received data
+        SocketChannel sc = (SocketChannel) key.channel();
+        ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
+        int numRead = 0;
+        try {
+            if((numRead = sc.read(buffer)) == -1) {
+                // TODO
+/*
+                if(disconnectingHandler != null)
+                    disconnectingHandler.process(sc, selector);
+                else {
+                    halt();
+                    return;
+                }
+*/
+            }
+        } catch(IOException e) {
+            // TODO
+/*
+            if(receiveExceptionHandler != null) {
+
+            } else {
+                e.printStackTrace();
+
+            }
+*/
+        }
+
+        if(receiveHandler != null) {
+            byte[] dataCopy = new byte[numRead];
+            System.arraycopy(buffer.array(), 0, dataCopy, 0, numRead);
+            receiveHandler.process(sc, dataCopy);
+        }
     }
 
     public void send(byte[] data) {
-        // TODO added data to queue for sending
         if(threadSender == null) {
             threadSender = new Thread(sender);
             threadSender.start();
         }
         synchronized(dataToSend) {
             dataToSend.add(data);
-            dataToSend.notify();
+            dataToSend.notifyAll();
         }
     }
 
     private void write(SelectionKey key) {
-        // TODO needed queue for sending data
         SocketChannel sc = (SocketChannel) key.channel();
         Queue<byte[]> queue;
         synchronized(dataToSend) {
             queue = new LinkedList<>(dataToSend);
             dataToSend.clear();
         }
-
         while(!queue.isEmpty()) {
             byte[] sent = queue.poll();
             ByteBuffer buffer = ByteBuffer.wrap(sent);
             try {
                 sc.write(buffer);
+                // TODO if write == -1
+
+
             } catch(IOException e) {
                 // TODO process exception
+                e.printStackTrace();
             }
-            System.out.println("The data was been sent to server: " + new String(sent));
-
-
         }
         key.interestOps(SelectionKey.OP_READ);
         synchronized(dataToSend) {
-            dataToSend.notify();
+            dataToSend.notifyAll();
         }
+    }
+
+    public void finish() {
+        if(threadSender != null)
+            threadSender.interrupt();
+        clientIsRunning = false;
+        selector.wakeup();
     }
 
     @Override
     public void run() {
-        while(true) { // TODO how to stop client?
+        while(clientIsRunning) {
             try {
                 selector.select();
             } catch(IOException e) {
@@ -113,14 +252,12 @@ public class NIOClient extends Thread {
                 else if(key.isReadable()) read(key);
                 else if(key.isWritable()) write(key);
             }
-
-            // TODO finishing client
-
-
         }
-
-
-
+        try {
+            selector.close();
+        } catch(IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private class Sender implements Runnable {
@@ -129,21 +266,22 @@ public class NIOClient extends Thread {
         public void run() {
             while(true) {
                 synchronized(dataToSend) {
-                    try {
-                        dataToSend.wait();
-                    } catch(InterruptedException e) {
-                        return;
+                    while(dataToSend.isEmpty()) {
+                        try {
+                            dataToSend.wait();
+                        } catch(InterruptedException e) {
+                            return;
+                        }
                     }
                     if(Thread.interrupted()) return;
-                    if(!dataToSend.isEmpty()) {
-                        SelectionKey key = sc.keyFor(selector);
-                        if(key != null && key.isValid() && selector.isOpen())
-                            key.interestOps(SelectionKey.OP_WRITE);
-                    }
+                    SelectionKey key = sc.keyFor(selector);
+                    if(key != null && key.isValid() && selector.isOpen())
+                        key.interestOps(SelectionKey.OP_WRITE);
                 }
                 selector.wakeup();
             }
         }
+
     }
 
 }

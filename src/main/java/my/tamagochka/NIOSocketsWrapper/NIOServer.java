@@ -1,12 +1,17 @@
 package my.tamagochka.NIOSocketsWrapper;
 
+import my.tamagochka.NIOSocketsWrapper.Handlers.BiHandler;
+import my.tamagochka.NIOSocketsWrapper.Handlers.TriHandler;
+import my.tamagochka.NIOSocketsWrapper.Handlers.UniHandler;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.*;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.*;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 public class NIOServer extends Thread {
 
@@ -22,61 +27,74 @@ public class NIOServer extends Thread {
     private Sender sender = new Sender();
     private Thread threadSender;
 
-    private boolean serverRunning = false;
+    private boolean serverIsRunning = false;
 
-    interface Handler {
-        void process(SocketChannel sc, Queue<byte[]> notSent, Exception e);
-    }
+//    interface exceptionHandler extends TriHandler<SocketChannel, Queue<byte[]>, Exception> {}
+
 
     // events
-    private Consumer<SocketChannel> acceptHandler;
-    private Handler closeHandler;
-    private Handler haltHandler;
-    private BiConsumer<Map<SocketChannel, Queue<byte[]>>, IOException> finishHandler;
+    private UniHandler<SocketChannel> acceptHandler;
+//    private exceptionHandler closeHandler;
+//    private exceptionHandler haltHandler;
+//    private BiHandler<Map<SocketChannel, Queue<byte[]>>, IOException> finishHandler;
 
-    private BiConsumer<SocketChannel, byte[]> receiveHandler;
-    private BiConsumer<SocketChannel, byte[]> sentHandler;
+    private BiHandler<SocketChannel, byte[]> receiveHandler;
+//    private BiHandler<SocketChannel, byte[]> sentHandler;
 
-    private Handler receiveExceptionHandler;
-    private Handler sentExceptionHandler;
-    private BiConsumer<SocketChannel, IOException> acceptExceptionHandler;
+//    private exceptionHandler receiveExceptionHandler;
+//    private exceptionHandler sentExceptionHandler;
+//    private BiHandler<SocketChannel, IOException> acceptExceptionHandler;
 
     // events setters
-    public void acceptHandler(Consumer<SocketChannel> acceptHandler) {
+    public void acceptHandler(UniHandler<SocketChannel> acceptHandler) {
         this.acceptHandler = acceptHandler;
     }
 
-    public void closeHandler(Handler closeHandler) {
+/*
+    public void closeHandler(exceptionHandler closeHandler) {
         this.closeHandler = closeHandler;
     }
+*/
 
-    public void haltHandler(Handler haltHandler) {
+/*
+    public void haltHandler(exceptionHandler haltHandler) {
         this.haltHandler = haltHandler;
     }
+*/
 
-    public void finishHandler(BiConsumer<Map<SocketChannel, Queue<byte[]>>, IOException> finishHandler) {
+/*
+    public void finishHandler(BiHandler<Map<SocketChannel, Queue<byte[]>>, IOException> finishHandler) {
         this.finishHandler = finishHandler;
     }
+*/
 
-    public void receiveHandler(BiConsumer<SocketChannel, byte[]> receiveHandler) {
+    public void receiveHandler(BiHandler<SocketChannel, byte[]> receiveHandler) {
         this.receiveHandler = receiveHandler;
     }
 
-    public void sentHandler(BiConsumer<SocketChannel, byte[]> sentHandler) {
+/*
+    public void sentHandler(BiHandler<SocketChannel, byte[]> sentHandler) {
         this.sentHandler = sentHandler;
     }
+*/
 
-    public void receiveExceptionHandler(Handler receiveExceptionHandler) {
+/*
+    public void receiveExceptionHandler(exceptionHandler receiveExceptionHandler) {
         this.receiveExceptionHandler = receiveExceptionHandler;
     }
+*/
 
-    public void sentExceptionHandler(Handler sentExceptionHandler) {
+/*
+    public void sentExceptionHandler(exceptionHandler sentExceptionHandler) {
         this.sentExceptionHandler = sentExceptionHandler;
     }
+*/
 
-    public void acceptExceptionHandler(BiConsumer<SocketChannel, IOException> acceptExceptionHandler) {
+/*
+    public void acceptExceptionHandler(BiHandler<SocketChannel, IOException> acceptExceptionHandler) {
         this.acceptExceptionHandler = acceptExceptionHandler;
     }
+*/
 
     public NIOServer(int port) throws IOException {
         this(port, DEFAULT_BUFFER_SIZE);
@@ -90,15 +108,7 @@ public class NIOServer extends Thread {
         ssc.bind(new InetSocketAddress(port));
         selector = Selector.open();
         ssc.register(selector, SelectionKey.OP_ACCEPT);
-        serverRunning = true;
-    }
-
-    private boolean hasDataInChannel(SocketChannel sc, final Map<SocketChannel, Queue<byte[]>> data) {
-        synchronized(data) {
-            if(data.isEmpty()) return false;
-            if(data.get(sc) == null) return false;
-            return !data.get(sc).isEmpty();
-        }
+        serverIsRunning = true;
     }
 
     public void send(SocketChannel sc, byte[] data) {
@@ -109,10 +119,20 @@ public class NIOServer extends Thread {
         synchronized(dataToSend) {
             Queue<byte[]> queue = dataToSend.computeIfAbsent(sc, k -> new LinkedList<>());
             queue.add(data);
-            dataToSend.notify();
+            dataToSend.notifyAll();
         }
     }
 
+    // check if there is data to send in channel
+    private boolean hasDataInChannel(SocketChannel sc, final Map<SocketChannel, Queue<byte[]>> data) {
+        synchronized(data) {
+            if(data.isEmpty()) return false;
+            if(data.get(sc) == null) return false;
+            return !data.get(sc).isEmpty();
+        }
+    }
+
+    // check if there is data to send
     private boolean hasData(final Map<SocketChannel, Queue<byte[]>> data) {
         synchronized(data) {
             if(data.isEmpty()) return false;
@@ -123,6 +143,7 @@ public class NIOServer extends Thread {
         }
     }
 
+    // wait data to send
     private InterruptedException waitData(final Map<SocketChannel, Queue<byte[]>> data) {
         synchronized(data) {
             while(!hasData(data)) {
@@ -136,6 +157,7 @@ public class NIOServer extends Thread {
         return null;
     }
 
+/*
     private IOException dropConnection(SocketChannel sc) {
         if(sc != null && sc.isConnected()) {
             sc.keyFor(selector).cancel();
@@ -147,9 +169,11 @@ public class NIOServer extends Thread {
         }
         return null;
     }
+*/
 
     public void close(SocketChannel sc) {
-        if(!serverRunning) return;
+/*
+        if(!serverIsRunning) return;
         Queue<byte[]> notSent = null;
         synchronized(dataToSend) {
             if(dataToSend.get(sc) != null && sc.isConnected()) {
@@ -169,10 +193,17 @@ public class NIOServer extends Thread {
         if(closeHandler != null) {
             closeHandler.process(sc, notSent, e);
         } else if(e != null) e.printStackTrace();
+*/
+        try {
+            sc.close();
+        } catch(IOException e) {
+            e.printStackTrace();
+        }
     }
 
+/*
     public void halt(SocketChannel sc) {
-        if(!serverRunning) return;
+        if(!serverIsRunning) return;
         IOException e = dropConnection(sc);
         if(haltHandler != null) {
             Queue<byte[]> notSent = null;
@@ -187,6 +218,7 @@ public class NIOServer extends Thread {
             if(e != null) e.printStackTrace();
         }
     }
+*/
 
     private void accept(SelectionKey key) {
         ServerSocketChannel ssc = (ServerSocketChannel) key.channel();
@@ -196,15 +228,18 @@ public class NIOServer extends Thread {
             sc.configureBlocking(false);
             sc.register(selector, SelectionKey.OP_READ);
         } catch(IOException e) {
+            // TODO
+/*
             if(acceptExceptionHandler != null) {
-                acceptExceptionHandler.accept(sc, e);
+                acceptExceptionHandler.process(sc, e);
             } else {
                 e.printStackTrace();
             }
             return;
+*/
         }
         if(acceptHandler != null)
-            acceptHandler.accept(sc);
+            acceptHandler.process(sc);
     }
 
     private void read(SelectionKey key) {
@@ -213,11 +248,15 @@ public class NIOServer extends Thread {
         int numRead = 0;
         try {
             if((numRead = sc.read(buffer)) == -1) {
+                // TODO
+/*
                 halt(sc);
                 return;
+*/
             }
-            System.out.println(new String(buffer.array()));
         } catch(IOException e) {
+            // TODO
+/*
             if(receiveExceptionHandler != null) {
                 Queue<byte[]> notSent = null;
                 synchronized(dataToSend) {
@@ -229,11 +268,12 @@ public class NIOServer extends Thread {
                 halt(sc);
             }
             return;
+*/
         }
         if(receiveHandler != null) {
             byte[] dataCopy = new byte[numRead];
             System.arraycopy(buffer.array(), 0, dataCopy, 0, numRead);
-            receiveHandler.accept(sc, dataCopy);
+            receiveHandler.process(sc, dataCopy);
         }
     }
 
@@ -250,6 +290,8 @@ public class NIOServer extends Thread {
             try {
                 sc.write(buffer);
             } catch(IOException e) {
+                // TODO
+/*
                 if(sentExceptionHandler != null) {
                     Queue<byte[]> notSent = null;
                     synchronized(dataToSend) {
@@ -263,28 +305,31 @@ public class NIOServer extends Thread {
                     halt(sc);
                 }
                 return;
+*/
             }
-            if(sentHandler != null) sentHandler.accept(sc, sent);
-        }
-        synchronized(dataToSend) {
-            dataToSend.notify();
+//            if(sentHandler != null) sentHandler.process(sc, sent);
         }
         key.interestOps(SelectionKey.OP_READ);
-    }
-
-    public void finish() {
-        serverRunning = false;
-        if(threadSender != null)
-            threadSender.interrupt();
         synchronized(dataToSend) {
             dataToSend.notifyAll();
         }
+    }
+
+    public void finish() {
+        if(threadSender != null)
+            threadSender.interrupt();
+        serverIsRunning = false;
+/*
+        synchronized(dataToSend) {
+            dataToSend.notifyAll();
+        }
+*/
         selector.wakeup();
     }
 
     @Override
     public void run() {
-        while(serverRunning) {
+        while(serverIsRunning) {
             try {
                 selector.select();
             } catch(IOException e) {
@@ -300,6 +345,13 @@ public class NIOServer extends Thread {
                 else if(key.isWritable()) write(key);
             }
         }
+
+        try {
+            selector.close();
+        } catch(IOException e) {
+            e.printStackTrace();
+        }
+/*
         IOException onFinishException = null;
         try {
             selector.close();
@@ -307,8 +359,9 @@ public class NIOServer extends Thread {
             onFinishException = e;
         }
         if(finishHandler != null)
-            finishHandler.accept(dataToSend, onFinishException);
+            finishHandler.process(dataToSend, onFinishException);
         else if(onFinishException != null) onFinishException.printStackTrace();
+*/
     }
 
     private class Sender implements Runnable {
@@ -317,10 +370,7 @@ public class NIOServer extends Thread {
         public void run() {
             while(true) {
                 synchronized(dataToSend) {
-                    if(waitData(dataToSend) != null) {
-                        return;
-                    }
-                    if(Thread.interrupted()) return;
+                    if(waitData(dataToSend) != null || Thread.interrupted()) return;
                     for(SocketChannel sc : dataToSend.keySet()) {
                         SelectionKey key = sc.keyFor(selector);
                         if(hasDataInChannel(sc, dataToSend) && selector.isOpen() && key != null && key.isValid()) {
