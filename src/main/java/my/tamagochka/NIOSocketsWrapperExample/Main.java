@@ -40,36 +40,31 @@ public class Main {
         Logger logger = new Logger(FULL_LOG, host);
 
         host.onAction(sc -> {
-            Sender sender = new Sender(sc, host, NUM_PACKETS);
+            Sender sender = new Sender(sc, host, logger, NUM_PACKETS);
             threads.put(sc, sender);
             sender.start();
         });
 
         host.onReceive((sc, data) -> {
-            logger.logDataTransmission(sc, new String(data), "123");
+            logger.logDataReceive(sc, data);
             if(new String(data).contains("Bye.")) { // disconnecting host after it sent "Bye." message
                 threads.get(sc).receivingDone();
-                System.out.println("The host has completed the transmission.");
+                logger.logCompleteReceivng();
                 if(threads.get(sc).isExchangeDone()) {
-                    try {
-                        sc.close();
-                    } catch(IOException e) {
-                        e.printStackTrace();
-                    }
-                    System.out.println("The channel to host was closed.");
+                    host.close(sc);
+                    logger.logCloseChannel();
                 }
             }
         });
 
-        System.out.println("The host has been started...");
+        logger.logStartHost();
         host.start();
         System.out.println("Type 'exit' to exit.");
         while(type == null || !type.equals("exit")) {
             type = in.nextLine();
         }
         host.finish();
-        System.out.println("The host was stopped.");
-
+        logger.logStopHost();
 
     }
 }

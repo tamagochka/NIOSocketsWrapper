@@ -8,15 +8,17 @@ public class Sender extends Thread {
 
     private SocketChannel sc;
     private NIOHost host;
+    private Logger logger;
 
     private int numPackets;
 
     private boolean transmissionDone = false;
     private boolean receivingDone = false;
 
-    public Sender(SocketChannel sc, NIOHost host, int numPackets) {
+    public Sender(SocketChannel sc, NIOHost host, Logger logger, int numPackets) {
         this.sc = sc;
         this.host = host;
+        this.logger = logger;
         this.numPackets = numPackets;
     }
 
@@ -31,12 +33,18 @@ public class Sender extends Thread {
     @Override
     public void run() {
         for(int i = 0; i < numPackets; i++) {
-            host.send(sc, Integer.toString(i).getBytes());
+            byte[] data = Integer.toString(i).getBytes();
+            host.send(sc, data);
+            logger.logDataSend(sc, data);
         }
-        host.send(sc, "Bye.".getBytes());
+        byte[] data = "Bye.".getBytes();
+        host.send(sc, data);
+        logger.logDataSend(sc, data);
         transmissionDone = true;
+        logger.logCompleteSending();
         if(isExchangeDone()) {
             host.close(sc);
+            logger.logCloseChannel();
         }
     }
 
