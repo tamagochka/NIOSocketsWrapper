@@ -21,8 +21,7 @@ public class NIOClient extends NIOHost {
         SocketChannel sc = (SocketChannel) key.channel();
         try {
             sc.finishConnect();
-        } catch(IOException e) {
-            // TODO
+        } catch(IOException ignored) {
         }
         key.interestOps(SelectionKey.OP_READ);
         if(onAction != null)
@@ -35,4 +34,5 @@ public class NIOClient extends NIOHost {
         sc.register(selector, SelectionKey.OP_CONNECT);
         sc.connect(new InetSocketAddress(address, port));
     }
+
 }

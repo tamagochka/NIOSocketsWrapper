@@ -25,14 +25,19 @@ public abstract class NIOHost extends Thread {
     // events
     private BiConsumer<SocketChannel, byte[]> onReceive;
     protected Consumer<SocketChannel> onAction;
+    private Consumer<SocketChannel> onBreakChannel;
 
     // events setters
+    public void onReceive(BiConsumer<SocketChannel, byte[]> onReceive) {
+        this.onReceive = onReceive;
+    }
+
     public void onAction(Consumer<SocketChannel> onAction) {
         this.onAction = onAction;
     }
 
-    public void onReceive(BiConsumer<SocketChannel, byte[]> onReceive) {
-        this.onReceive = onReceive;
+    public void onBreakChannel(Consumer<SocketChannel> onBreakChannel) {
+        this.onBreakChannel = onBreakChannel;
     }
 
     protected NIOHost(int bufferSize) throws IOException {
@@ -88,8 +93,7 @@ public abstract class NIOHost extends Thread {
     public void close(SocketChannel sc) {
         try {
             sc.close();
-        } catch(IOException e) {
-            e.printStackTrace(); // TODO
+        } catch(IOException ignored) {
         }
     }
 
@@ -98,11 +102,17 @@ public abstract class NIOHost extends Thread {
         ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
         int numRead = 0;
         try {
-            if((numRead = sc.read(buffer)) == -1) {
-                // TODO
-            }
+            numRead = sc.read(buffer); // TODO call read method while doesn't return -1
         } catch(IOException e) {
-            // TODO
+            // all data in the dataToSend will be lost
+            key.cancel();
+            close(sc);
+            if(onBreakChannel != null)
+                onBreakChannel.accept(sc);
+            synchronized(dataToSend) {
+                dataToSend.remove(sc);
+            }
+            return;
         }
         if(onReceive != null) {
             byte[] dataCopy = new byte[numRead];
@@ -122,11 +132,18 @@ public abstract class NIOHost extends Thread {
             byte[] sent = queue.poll();
             ByteBuffer buffer = ByteBuffer.wrap(sent);
             try {
-                sc.write(buffer);
-                // TODO if sc.write returned -1?
-
+                sc.write(buffer); // TODO doesn't return count sent bytes
             } catch(IOException e) {
-                // TODO
+                // all data in the queue and dataToSend will be lost
+                e.printStackTrace();
+                key.cancel();
+                close(sc);
+                if(onBreakChannel != null)
+                    onBreakChannel.accept(sc);
+                synchronized(dataToSend) {
+                    dataToSend.remove(sc);
+                }
+                return;
             }
         }
         key.interestOps(SelectionKey.OP_READ);
@@ -162,9 +179,7 @@ public abstract class NIOHost extends Thread {
 
         try {
             selector.close();
-        } catch(IOException e) {
-            // TODO
-            e.printStackTrace();
+        } catch(IOException ignored) {
         }
     }
 

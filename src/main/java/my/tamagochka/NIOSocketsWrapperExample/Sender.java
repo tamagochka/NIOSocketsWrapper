@@ -33,6 +33,7 @@ public class Sender extends Thread {
     @Override
     public void run() {
         for(int i = 0; i < numPackets; i++) {
+            if(Thread.interrupted()) return;
             byte[] data = Integer.toString(i).getBytes();
             host.send(sc, data);
             logger.logDataSend(sc, data);

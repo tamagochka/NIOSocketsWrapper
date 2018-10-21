@@ -34,9 +34,8 @@ public class Logger {
         System.out.println("The " + another_host_str + " had sent data.");
     }
 
-
     public void logCloseChannel() {
-        System.out.println("The channel to " + another_host_str + " had closed.");
+        System.out.println("The channel to " + another_host_str + " had closed. Type 'exit' to exit.");
     }
 
     public void logStartHost() {
@@ -59,13 +58,13 @@ public class Logger {
 
     private void logData(SocketChannel sc, byte[] data, String direction) {
         try {
-            System.out.println("Data was been " + direction + another_host_str + ": " +
+            System.out.println("Data had " + direction + " " + another_host_str + ": " +
                     ((InetSocketAddress) sc.getRemoteAddress()).getAddress() + ":" +
                     ((InetSocketAddress) sc.getRemoteAddress()).getPort() + " - " +
                     new String(data));
         } catch(IOException e) {
             e.printStackTrace();
         }
-
     }
+
 }

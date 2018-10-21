@@ -28,10 +28,10 @@ public class NIOServer extends NIOHost {
             sc = ssc.accept();
             sc.configureBlocking(false);
             sc.register(selector, SelectionKey.OP_READ);
-        } catch(IOException e) {
-            // TODO
+        } catch(IOException ignored) {
         }
         if(onAction != null)
             onAction.accept(sc);
     }
+
 }

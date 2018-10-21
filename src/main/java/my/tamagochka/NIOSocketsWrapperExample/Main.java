@@ -12,7 +12,7 @@ import java.util.Scanner;
 
 public class Main {
 
-    private static final int NUM_PACKETS = 10000;
+    private static final int NUM_PACKETS = 100000;
     private static final boolean FULL_LOG = true;
 
     private static Map<SocketChannel, Sender> threads = new HashMap<>();
@@ -21,17 +21,27 @@ public class Main {
 
         NIOHost host;
 
-        System.out.print("What do you have to run (s(server)/c(client))? ");
         String type = null;
         Scanner in = new Scanner(System.in);
-        type = in.nextLine();
+        do {
+            System.out.print("What do you have to run [s(server)/c(client)/E(exit)]? ");
+            type = in.nextLine();
+        } while(!(type.toLowerCase().equals("s") ||
+                type.toLowerCase().equals("c") ||
+                type.toLowerCase().equals("e") ||
+                type.isEmpty()));
 
         try {
-            if(type.toLowerCase().equals("s")) {
-                host = new NIOServer(5050);
-            } else if(type.toLowerCase().equals("c")) {
-                host = new NIOClient("127.0.0.1", 5050);
-            } else return;
+            switch(type.toLowerCase()) {
+                case "s":
+                    host = new NIOServer(5050);
+                    break;
+                case "c":
+                    host = new NIOClient("127.0.0.1", 5050);
+                    break;
+                default:
+                    return;
+            }
         } catch(IOException e) {
             e.printStackTrace();
             return;
@@ -57,6 +67,9 @@ public class Main {
             }
         });
 
+        // interrupt Sender thread if channel is break
+        host.onBreakChannel(sc -> threads.remove(sc).interrupt());
+
         logger.logStartHost();
         host.start();
         System.out.println("Type 'exit' to exit.");
@@ -65,6 +78,6 @@ public class Main {
         }
         host.finish();
         logger.logStopHost();
-
     }
+
 }
