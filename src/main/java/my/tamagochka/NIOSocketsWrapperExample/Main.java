@@ -25,14 +25,11 @@ public class Main {
         Scanner in = new Scanner(System.in);
         do {
             System.out.print("What do you have to run [s(server)/c(client)/E(exit)]? ");
-            type = in.nextLine();
-        } while(!(type.toLowerCase().equals("s") ||
-                type.toLowerCase().equals("c") ||
-                type.toLowerCase().equals("e") ||
-                type.isEmpty()));
+            type = in.nextLine().toLowerCase();
+        } while(!"sce".contains(type));
 
         try {
-            switch(type.toLowerCase()) {
+            switch(type) {
                 case "s":
                     host = new NIOServer(5050);
                     break;

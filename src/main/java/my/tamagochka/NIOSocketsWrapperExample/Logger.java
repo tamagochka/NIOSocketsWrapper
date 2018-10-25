@@ -58,7 +58,7 @@ public class Logger {
 
     private void logData(SocketChannel sc, byte[] data, String direction) {
         try {
-            System.out.println("Data had " + direction + " " + another_host_str + ": " +
+            System.out.println("The data had " + direction + " " + another_host_str + ": " +
                     ((InetSocketAddress) sc.getRemoteAddress()).getAddress() + ":" +
                     ((InetSocketAddress) sc.getRemoteAddress()).getPort() + " - " +
                     new String(data));

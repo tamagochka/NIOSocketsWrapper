@@ -44,11 +44,10 @@ public abstract class NIOHost extends Thread {
         this.bufferSize = bufferSize;
         selector = Selector.open();
         hostIsRunning = true;
+        sender.start();
     }
 
     public void send(SocketChannel sc, byte[] data) {
-        if(!sender.isAlive())
-            sender.start();
         synchronized(dataToSend) {
             Queue<byte[]> queue = dataToSend.computeIfAbsent(sc, k -> new LinkedList<>());
             queue.add(data);
@@ -97,12 +96,29 @@ public abstract class NIOHost extends Thread {
         }
     }
 
+    public void sendAndClose(SocketChannel sc) {
+        synchronized(dataToSend) {
+            while(dataToSend.get(sc) != null && !dataToSend.get(sc).isEmpty()) {
+                try {
+                    dataToSend.wait();
+                } catch(InterruptedException ignored) {
+                }
+            }
+        }
+        try {
+            sc.close();
+        } catch(IOException ignored) {
+        }
+    }
+
     private void read(SelectionKey key) {
-        SocketChannel sc = (SocketChannel) key.channel();
+        SocketChannel sc = (SocketChannel)key.channel();
         ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
         int numRead = 0;
         try {
-            numRead = sc.read(buffer); // TODO call read method while doesn't return -1
+            if((numRead = sc.read(buffer)) == -1) {
+                throw new IOException();
+            }
         } catch(IOException e) {
             // all data in the dataToSend will be lost
             key.cancel();
@@ -122,7 +138,7 @@ public abstract class NIOHost extends Thread {
     }
 
     private void write(SelectionKey key) {
-        SocketChannel sc = (SocketChannel) key.channel();
+        SocketChannel sc = (SocketChannel)key.channel();
         Queue<byte[]> queue;
         synchronized(dataToSend) {
             queue = new LinkedList<>(dataToSend.get(sc));
